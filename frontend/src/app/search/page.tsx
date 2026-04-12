@@ -1,13 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react"; // Added Suspense
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { searchTranscripts } from "@/lib/api";
 import type { SearchResult } from "@/types";
 import { AxiosError } from "axios";
 
-export default function SearchPage() {
+// 1. Create a separate component for the actual search logic
+function SearchContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -101,7 +102,6 @@ export default function SearchPage() {
         );
     }
 
-    // Group results by lecture
     const groupedResults = results.reduce<Record<number, SearchResult[]>>(
         (acc, result) => {
             if (!acc[result.lecture_id]) {
@@ -122,7 +122,6 @@ export default function SearchPage() {
                 Search across all lecture transcripts by keyword or phrase
             </p>
 
-            {/* Search Form */}
             <form
                 onSubmit={handleSearch}
                 className="bg-white p-6 rounded-lg shadow mb-8"
@@ -157,17 +156,14 @@ export default function SearchPage() {
                 </div>
             </form>
 
-            {/* Error */}
             {error && (
                 <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6">
                     {error}
                 </div>
             )}
 
-            {/* Results */}
             {searched && !loading && (
                 <div>
-                    {/* Results summary */}
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-lg font-medium text-gray-700">
                             {results.length === 0
@@ -191,7 +187,6 @@ export default function SearchPage() {
                         )}
                     </div>
 
-                    {/* No results */}
                     {results.length === 0 && (
                         <div className="text-center py-16 bg-white rounded-lg shadow">
                             <div className="text-5xl mb-4">🔎</div>
@@ -204,7 +199,6 @@ export default function SearchPage() {
                         </div>
                     )}
 
-                    {/* Grouped results by lecture */}
                     <div className="space-y-6">
                         {Object.entries(groupedResults).map(
                             ([lectureId, lectureResults]) => (
@@ -212,7 +206,6 @@ export default function SearchPage() {
                                     key={lectureId}
                                     className="bg-white rounded-lg shadow overflow-hidden"
                                 >
-                                    {/* Lecture header */}
                                     <div className="bg-blue-50 px-5 py-3 border-b flex items-center justify-between">
                                         <Link
                                             href={`/lectures/${lectureId}`}
@@ -229,7 +222,6 @@ export default function SearchPage() {
                                         </span>
                                     </div>
 
-                                    {/* Segments */}
                                     <div className="divide-y">
                                         {lectureResults.map(
                                             (result, index) => (
@@ -239,7 +231,6 @@ export default function SearchPage() {
                                                 >
                                                     <div className="flex items-start justify-between gap-4">
                                                         <div className="flex-1">
-                                                            {/* Timestamp badge */}
                                                             <span className="inline-block text-xs font-mono bg-blue-100 text-blue-700 px-2 py-1 rounded mb-2">
                                                                 ⏱{" "}
                                                                 {formatTime(
@@ -249,8 +240,7 @@ export default function SearchPage() {
                                                                 {formatTime(
                                                                     result.end_time
                                                                 )}
-                                                            </span>
-                                                            {/* Text with highlight */}
+                                                              </span>
                                                             <p className="text-gray-700 text-sm leading-relaxed">
                                                                 {highlightMatch(
                                                                     result.text,
@@ -259,7 +249,6 @@ export default function SearchPage() {
                                                             </p>
                                                         </div>
 
-                                                        {/* Jump button */}
                                                         <Link
                                                             href={`/lectures/${result.lecture_id}?t=${result.start_time}`}
                                                             className="shrink-0 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 transition flex items-center gap-1"
@@ -281,5 +270,14 @@ export default function SearchPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+// 2. The default export wraps the content in Suspense
+export default function SearchPage() {
+    return (
+        <Suspense fallback={<div className="max-w-4xl mx-auto p-10 text-center">Loading Search...</div>}>
+            <SearchContent />
+        </Suspense>
     );
 }
