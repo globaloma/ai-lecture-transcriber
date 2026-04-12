@@ -1,0 +1,10 @@
+# Env files (IMPORTANT: never commit your DB passwords)
+.env
+*.env.local
+frontend/.env*
+backend/.env*
+
+
+**/venv/
+**/.venv/
+**/env/

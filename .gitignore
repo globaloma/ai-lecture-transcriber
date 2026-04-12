@@ -1,0 +1,7 @@
+# Next.js build folders
+.next/
+**/ .next/
+
+# Virtual Envs
+venv/
+**/venv/
