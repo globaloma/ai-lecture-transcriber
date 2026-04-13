@@ -13,8 +13,13 @@ from services.topic_service import detect_topics
 from datetime import datetime
 
 app = Flask(__name__)
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://victoria-alozie-ai-lecture-transcriber.vercel.app",
+]
+
 app.config.from_object(Config)
-CORS(app)
+CORS(app, origins=ALLOWED_ORIGINS)
 
 db.init_app(app)
 
