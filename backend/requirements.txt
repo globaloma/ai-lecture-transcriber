@@ -2,11 +2,7 @@ flask-sqlalchemy
 flask 
 flask-cors 
 openai-whisper
-ffmpeg
 moviepy
 psycopg2-binary
 python-dotenv
-torch
-sumy 
-nltk
 gunicorn
