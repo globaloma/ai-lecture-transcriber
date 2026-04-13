@@ -89,7 +89,7 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
             # Detect topics
             print("[BG] Detecting topics...")
             segment_list = [s.to_dict() for s in transcript.segments]
-            detected_topics = detect_topics(segment_list, chunk_size=10)
+            detected_topics = detect_topics(segment_list)
 
             for item in detected_topics:
                 topic = Topic(
