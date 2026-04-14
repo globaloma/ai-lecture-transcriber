@@ -3,65 +3,88 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { getLectures, deleteLecture } from "@/lib/api";
-import type { Lecture } from "@/types";
+import type { Lecture, LecturesResponse } from "@/types";
 import toast from "react-hot-toast";
 
 export default function HomePage() {
-    const [lectures, setLectures] = useState<Lecture[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
+  const [lectures, setLectures] = useState<Lecture[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-    useEffect(() => {
-        fetchLectures();
+  useEffect(() => {
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-        // Auto refresh every 10 seconds to update processing status
-        const interval = setInterval(fetchLectures, 10000);
-        return () => clearInterval(interval);
-    }, []);
+    const loadLectures = async () => {
+      try {
+        const data = await fetchLectures();
+        if (cancelled) return;
 
-    async function fetchLectures(): Promise<void> {
-        try {
-            const data = await getLectures();
-            setLectures(data.lectures);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
+        const hasProcessing = data.lectures.some(
+          (lecture) => lecture.status === "processing"
+        );
+
+        if (hasProcessing) {
+          timeoutId = setTimeout(loadLectures, 10000);
         }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    loadLectures();
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
+  async function fetchLectures(): Promise<LecturesResponse> {
+    try {
+      const data = await getLectures();
+      setLectures(data.lectures);
+      return data;
+    } catch (err) {
+      console.error(err);
+      throw err;
+    } finally {
+      setLoading(false);
     }
+  }
 
-    async function handleDelete(id: number, title: string): Promise<void> {
-        if (!confirm(`Delete "${title}"?`)) return;
-        try {
-            await deleteLecture(id);
-            setLectures((prev) => prev.filter((l) => l.id !== id));
-            toast.success("Lecture deleted");
-        } catch (err) {
-            toast.error("Failed to delete");
-            console.error(err);
-        }
+  async function handleDelete(id: number, title: string): Promise<void> {
+    if (!confirm(`Delete "${title}"?`)) return;
+    try {
+      await deleteLecture(id);
+      setLectures((prev) => prev.filter((l) => l.id !== id));
+      toast.success("Lecture deleted");
+    } catch (err) {
+      toast.error("Failed to delete");
+      console.error(err);
     }
+  }
 
-    function formatDate(dateString: string): string {
-        return new Date(dateString).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
-    }
+  function formatDate(dateString: string): string {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
 
-    function formatProcessingTime(seconds: number | null): string {
-        if (!seconds) return "";
-        const mins = Math.round(seconds / 60);
-        return mins < 1 ? "< 1 min" : `${mins} min`;
-    }
+  function formatProcessingTime(seconds: number | null): string {
+    if (!seconds) return "";
+    const mins = Math.round(seconds / 60);
+    return mins < 1 ? "< 1 min" : `${mins} min`;
+  }
 
-    const processingCount = lectures.filter(
-        (l) => l.status === "processing"
-    ).length;
+  const processingCount = lectures.filter(
+    (l) => l.status === "processing"
+  ).length;
 
-    const completedCount = lectures.filter(
-        (l) => l.status === "completed"
-    ).length;
+  const completedCount = lectures.filter(
+    (l) => l.status === "completed"
+  ).length;
 
     return (
         <div>

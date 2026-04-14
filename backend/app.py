@@ -51,27 +51,127 @@ def get_file_type(filename: str) -> str:
 # =====================
 # BACKGROUND WORKER
 # =====================
+# def process_transcription(app_context, lecture_id: int, file_path: str):
+#     """
+#     Runs Whisper transcription in a background thread.
+#     Updates lecture status when done.
+#     """
+#     with app_context:
+#         try:
+#             lecture = Lecture.query.get(lecture_id)
+#             if not lecture:
+#                 print(f"[BG] Lecture {lecture_id} not found")
+#                 return
+
+#             print(f"[BG] Starting transcription: lecture {lecture_id}")
+#             start_time = time.time()
+
+#             # Run Whisper
+#             result = transcribe_file(file_path)
+
+#             end_time = time.time()
+#             duration = round(end_time - start_time, 2)
+#             print(f"[BG] Transcription done in {duration}s")
+
+#             # Save transcript
+#             transcript = Transcript(
+#                 lecture_id=lecture.id,
+#                 full_text=result["full_text"],
+#                 language=result["language"]
+#             )
+#             db.session.add(transcript)
+#             db.session.commit()
+
+#             # Save segments
+#             for seg in result["segments"]:
+#                 segment = TranscriptSegment(
+#                     transcript_id=transcript.id,
+#                     segment_index=seg["id"],
+#                     start_time=seg["start"],
+#                     end_time=seg["end"],
+#                     segment_text=seg["text"]
+#                 )
+#                 db.session.add(segment)
+#             db.session.commit()
+#             print(f"[BG] Saved {len(result['segments'])} segments")
+
+#             # Detect topics
+#             print("[BG] Detecting topics...")
+#             segment_list = [s.to_dict() for s in transcript.segments]
+#             detected_topics = detect_topics(segment_list)
+
+#             for item in detected_topics:
+#                 topic = Topic(
+#                     transcript_id=transcript.id,
+#                     topic_title=item["topic_title"],
+#                     start_time=item["start_time"],
+#                     end_time=item["end_time"],
+#                     description=item["description"]
+#                 )
+#                 db.session.add(topic)
+#             db.session.commit()
+#             print(f"[BG] Saved {len(detected_topics)} topics")
+
+#             # Mark as completed
+#             lecture.status = "completed"
+#             lecture.processing_time = duration
+#             db.session.commit()
+
+#             print(f"[BG] Lecture {lecture_id} completed in {duration}s")
+
+#         except Exception as e:
+#             print(f"[BG] Error on lecture {lecture_id}: {str(e)}")
+#             try:
+#                 lecture = Lecture.query.get(lecture_id)
+#                 if lecture:
+#                     lecture.status = "failed"
+#                     lecture.error_message = str(e)
+#                     db.session.commit()
+#             except Exception as inner:
+#                 print(f"[BG] Could not update status: {str(inner)}")
+#                 db.session.rollback()
+
+
+# =====================
+# BACKGROUND WORKER
+# =====================
 def process_transcription(app_context, lecture_id: int, file_path: str):
     """
     Runs Whisper transcription in a background thread.
-    Updates lecture status when done.
+    Uses a fresh DB session after the long transcription step
+    so Supabase doesn't reuse a stale/closed connection.
     """
     with app_context:
         try:
-            lecture = Lecture.query.get(lecture_id)
+            # Optional: verify lecture exists, then immediately release session
+            lecture = db.session.get(Lecture, lecture_id)
             if not lecture:
                 print(f"[BG] Lecture {lecture_id} not found")
                 return
 
+            # IMPORTANT:
+            # Release any checked-out DB connection before the long Whisper job
+            db.session.rollback()
+            db.session.remove()
+
             print(f"[BG] Starting transcription: lecture {lecture_id}")
             start_time = time.time()
 
-            # Run Whisper
+            # Run Whisper (long-running step)
             result = transcribe_file(file_path)
 
             end_time = time.time()
             duration = round(end_time - start_time, 2)
             print(f"[BG] Transcription done in {duration}s")
+
+            # IMPORTANT:
+            # Start with a brand-new session/connection for all DB writes
+            db.session.remove()
+
+            lecture = db.session.get(Lecture, lecture_id)
+            if not lecture:
+                print(f"[BG] Lecture {lecture_id} not found after transcription")
+                return
 
             # Save transcript
             transcript = Transcript(
@@ -80,7 +180,7 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
                 language=result["language"]
             )
             db.session.add(transcript)
-            db.session.commit()
+            db.session.flush()  # get transcript.id without final commit
 
             # Save segments
             for seg in result["segments"]:
@@ -92,7 +192,8 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
                     segment_text=seg["text"]
                 )
                 db.session.add(segment)
-            db.session.commit()
+
+            db.session.flush()
             print(f"[BG] Saved {len(result['segments'])} segments")
 
             # Detect topics
@@ -109,28 +210,33 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
                     description=item["description"]
                 )
                 db.session.add(topic)
-            db.session.commit()
+
+            db.session.flush()
             print(f"[BG] Saved {len(detected_topics)} topics")
 
             # Mark as completed
             lecture.status = "completed"
             lecture.processing_time = duration
+            lecture.error_message = None
             db.session.commit()
 
             print(f"[BG] Lecture {lecture_id} completed in {duration}s")
 
         except Exception as e:
             print(f"[BG] Error on lecture {lecture_id}: {str(e)}")
+            db.session.rollback()
+            db.session.remove()
+
+            # Try to mark lecture as failed with a fresh session
             try:
-                lecture = Lecture.query.get(lecture_id)
+                lecture = db.session.get(Lecture, lecture_id)
                 if lecture:
                     lecture.status = "failed"
                     lecture.error_message = str(e)
                     db.session.commit()
             except Exception as inner:
-                print(f"[BG] Could not update status: {str(inner)}")
                 db.session.rollback()
-
+                print(f"[BG] Could not update status: {str(inner)}")
 
 # =====================
 # CREATE TABLES

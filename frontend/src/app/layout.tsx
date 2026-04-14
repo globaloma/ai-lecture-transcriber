@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
 import { Toaster } from "react-hot-toast";
+import { Analytics } from "@vercel/analytics/next"
 
 export const metadata: Metadata = {
     title: "AI Lecture Transcriber",
@@ -94,6 +95,7 @@ export default function RootLayout({
                 <main className="max-w-7xl mx-auto px-4 py-6">
                     {children}
                 </main>
+                <Analytics />
             </body>
         </html>
     );
