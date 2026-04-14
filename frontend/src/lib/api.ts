@@ -13,6 +13,9 @@ export const API_BASE_URL =
 
 const api = axios.create({
     baseURL: API_BASE_URL,
+    headers: {
+        'ngrok-skip-browser-warning': 'true', // <-- ADD THIS
+    }
 });
 
 export async function uploadLecture(
