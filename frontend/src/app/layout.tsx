@@ -6,7 +6,7 @@ import { Toaster } from "react-hot-toast";
 export const metadata: Metadata = {
     title: "AI Lecture Transcriber",
     description:
-        "AI-Powered Audio and Video Transcription System for Teaching and Learning",
+        "AI-Powered Audio and Video Transcription System for Learning in Tertiary Institutions",
 };
 
 export default function RootLayout({
