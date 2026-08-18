@@ -1,8 +1,8 @@
 from models import db, TranscriptSegment, Transcript, Lecture
 
-def search_transcripts(query: str) -> list:
+def search_transcripts(query: str, user_id: int) -> list:
     """
-    Search transcript segments by keyword.
+    Search transcript segments by keyword, scoped to a single user's lectures.
     Returns matching segments with lecture info and timestamps.
     """
 
@@ -22,7 +22,8 @@ def search_transcripts(query: str) -> list:
         .join(Transcript, TranscriptSegment.transcript_id == Transcript.id)
         .join(Lecture, Transcript.lecture_id == Lecture.id)
         .filter(
-            TranscriptSegment.segment_text.ilike(f"%{clean_query}%")
+            TranscriptSegment.segment_text.ilike(f"%{clean_query}%"),
+            Lecture.user_id == user_id
         )
         .order_by(Lecture.id, TranscriptSegment.segment_index)
         .all()
@@ -45,7 +46,7 @@ def search_transcripts(query: str) -> list:
     return results
 
 
-def search_in_lecture(query: str, lecture_id: int) -> list:
+def search_in_lecture(query: str, lecture_id: int, user_id: int) -> list:
     """
     Search within a specific lecture only.
     """
@@ -65,7 +66,8 @@ def search_in_lecture(query: str, lecture_id: int) -> list:
         .join(Lecture, Transcript.lecture_id == Lecture.id)
         .filter(
             TranscriptSegment.segment_text.ilike(f"%{clean_query}%"),
-            Lecture.id == lecture_id
+            Lecture.id == lecture_id,
+            Lecture.user_id == user_id
         )
         .order_by(TranscriptSegment.segment_index)
         .all()

@@ -3,17 +3,20 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { getLectures, deleteLecture } from "@/lib/api";
+import { useRequireAuth } from "@/lib/auth";
 import type { Lecture } from "@/types";
 
 export default function LecturesPage() {
+    const { token, loading: authLoading } = useRequireAuth();
     const [lectures, setLectures] = useState<Lecture[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<string>("all");
 
     useEffect(() => {
+        if (!token) return;
         fetchLectures();
-    }, []);
+    }, [token]);
 
     async function fetchLectures(): Promise<void> {
         try {
@@ -58,6 +61,8 @@ export default function LecturesPage() {
         if (filter === "transcribed") return lecture.has_transcript;
         return true;
     });
+
+    if (authLoading || !token) return null;
 
     if (loading) {
         return (

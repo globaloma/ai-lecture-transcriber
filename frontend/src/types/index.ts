@@ -34,6 +34,7 @@ export interface Lecture {
     error_message: string | null;
     uploaded_at: string;
     has_transcript: boolean;
+    has_assessment: boolean;
     transcript?: Transcript;
     topics?: Topic[];
 }
@@ -95,4 +96,86 @@ export interface TopicsResponse {
 export interface ApiError {
     error: string;
     details?: string;
+}
+
+// =====================
+// AUTH
+// =====================
+export interface User {
+    id: number;
+    full_name: string;
+    email: string;
+    university: string;
+    faculty: string;
+    department: string;
+    matric_number: string;
+    created_at: string;
+}
+
+export interface AuthResponse {
+    token: string;
+    user: User;
+}
+
+export interface RegisterPayload {
+    full_name: string;
+    email: string;
+    password: string;
+    university: string;
+    faculty: string;
+    department: string;
+    matric_number: string;
+}
+
+// =====================
+// ASSESSMENTS
+// =====================
+export interface Choice {
+    id: number;
+    choice_text: string;
+    is_correct?: boolean;
+}
+
+export interface Question {
+    id: number;
+    question_text: string;
+    choices: Choice[];
+    explanation?: string;
+}
+
+export interface Assessment {
+    id: number;
+    lecture_id: number;
+    created_at: string;
+    total_questions: number;
+    questions: Question[];
+}
+
+export interface AttemptResultItem {
+    question_id: number;
+    selected_choice_id: number | null;
+    correct_choice_id: number | null;
+    is_correct: boolean;
+    explanation?: string;
+}
+
+export interface SubmitAttemptResponse {
+    attempt_id: number;
+    score: number;
+    total: number;
+    results: AttemptResultItem[];
+}
+
+export interface Attempt {
+    id: number;
+    assessment_id: number;
+    score: number;
+    total: number;
+    submitted_at: string;
+}
+
+export interface AttemptsResponse {
+    assessment_id: number;
+    attempts: Attempt[];
+    total: number;
 }

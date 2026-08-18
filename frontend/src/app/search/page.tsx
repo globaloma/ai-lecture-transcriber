@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from "react"; // Added Suspense
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { searchTranscripts } from "@/lib/api";
+import { useRequireAuth } from "@/lib/auth";
 import type { SearchResult } from "@/types";
 import { AxiosError } from "axios";
 
@@ -11,6 +12,7 @@ import { AxiosError } from "axios";
 function SearchContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { token, loading: authLoading } = useRequireAuth();
 
     const [query, setQuery] = useState<string>(
         searchParams.get("q") || ""
@@ -112,6 +114,8 @@ function SearchContent() {
         },
         {}
     );
+
+    if (authLoading || !token) return null;
 
     return (
         <div className="max-w-4xl mx-auto">

@@ -3,14 +3,18 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { getLectures, deleteLecture } from "@/lib/api";
+import { useRequireAuth } from "@/lib/auth";
 import type { Lecture, LecturesResponse } from "@/types";
 import toast from "react-hot-toast";
 
 export default function HomePage() {
+  const { token, loading: authLoading } = useRequireAuth();
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    if (!token) return;
+
     let cancelled = false;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -37,7 +41,7 @@ export default function HomePage() {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, []);
+  }, [token]);
 
   async function fetchLectures(): Promise<LecturesResponse> {
     try {
@@ -85,6 +89,8 @@ export default function HomePage() {
   const completedCount = lectures.filter(
     (l) => l.status === "completed"
   ).length;
+
+  if (authLoading || !token) return null;
 
     return (
         <div>

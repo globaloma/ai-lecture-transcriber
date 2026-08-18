@@ -12,8 +12,19 @@ import {
   exportSRT,
   exportTXT,
   API_BASE_URL,
+  generateAssessment,
+  getAssessment,
+  submitAttempt,
 } from "@/lib/api";
-import type { Lecture, Segment, Topic, SearchResult } from "@/types";
+import { useRequireAuth } from "@/lib/auth";
+import type {
+  Lecture,
+  Segment,
+  Topic,
+  SearchResult,
+  Assessment,
+  SubmitAttemptResponse,
+} from "@/types";
 import { AxiosError } from "axios";
 import toast from "react-hot-toast";
 
@@ -199,17 +210,28 @@ export default function LectureDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const lectureId = params.id as string;
+  const { token, loading: authLoading } = useRequireAuth();
 
   const [lecture, setLecture] = useState<Lecture | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSegment, setActiveSegment] = useState<number | null>(null);
   const [activeTopic, setActiveTopic] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"segments" | "topics">("segments");
+  const [activeTab, setActiveTab] = useState<"segments" | "topics" | "assessment">(
+    "segments"
+  );
 
   // Topics
   const [topics, setTopics] = useState<Topic[]>([]);
   const [generatingTopics, setGeneratingTopics] = useState<boolean>(false);
+
+  // Assessment
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [assessmentLoaded, setAssessmentLoaded] = useState<boolean>(false);
+  const [generatingAssessment, setGeneratingAssessment] = useState<boolean>(false);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [submittingAttempt, setSubmittingAttempt] = useState<boolean>(false);
+  const [attemptResult, setAttemptResult] = useState<SubmitAttemptResponse | null>(null);
 
   // Search within lecture
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -221,9 +243,10 @@ export default function LectureDetailPage() {
   const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
+    if (!token) return;
     fetchLecture();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token]);
 
   // Auto jump to timestamp from ?t=
   useEffect(() => {
@@ -343,6 +366,76 @@ async function handleGenerateTopics(): Promise<void> {
     }
 }
 
+  // Lazily load the assessment the first time that tab is opened
+  useEffect(() => {
+    if (activeTab !== "assessment" || assessmentLoaded || !lecture) return;
+
+    (async () => {
+      try {
+        const data = await getAssessment(Number(lectureId));
+        setAssessment(data);
+      } catch (err) {
+        const axiosError = err as AxiosError;
+        if (axiosError.response?.status !== 404) {
+          console.error(err);
+        }
+        setAssessment(null);
+      } finally {
+        setAssessmentLoaded(true);
+      }
+    })();
+  }, [activeTab, assessmentLoaded, lecture, lectureId]);
+
+  async function handleGenerateAssessment(): Promise<void> {
+    try {
+      setGeneratingAssessment(true);
+      setAnswers({});
+      setAttemptResult(null);
+
+      const data = await generateAssessment(Number(lectureId));
+      setAssessment(data);
+      setAssessmentLoaded(true);
+      toast.success(`${data.total_questions} questions generated!`);
+      setActiveTab("assessment");
+    } catch (err) {
+      toast.error("Failed to generate assessment");
+      console.error(err);
+    } finally {
+      setGeneratingAssessment(false);
+    }
+  }
+
+  function handleSelectAnswer(questionId: number, choiceId: number): void {
+    if (attemptResult) return;
+    setAnswers((prev) => ({ ...prev, [questionId]: choiceId }));
+  }
+
+  async function handleSubmitAttempt(): Promise<void> {
+    if (!assessment) return;
+
+    if (Object.keys(answers).length < assessment.questions.length) {
+      toast.error("Please answer every question before submitting");
+      return;
+    }
+
+    try {
+      setSubmittingAttempt(true);
+      const result = await submitAttempt(assessment.id, answers);
+      setAttemptResult(result);
+      toast.success(`Scored ${result.score}/${result.total}`);
+    } catch (err) {
+      toast.error("Failed to submit assessment");
+      console.error(err);
+    } finally {
+      setSubmittingAttempt(false);
+    }
+  }
+
+  function handleRetakeAssessment(): void {
+    setAnswers({});
+    setAttemptResult(null);
+  }
+
   async function handleLectureSearch(
     e: React.FormEvent<HTMLFormElement>,
   ): Promise<void> {
@@ -361,6 +454,8 @@ async function handleGenerateTopics(): Promise<void> {
       setSearching(false);
     }
   }
+
+  if (authLoading || !token) return null;
 
   // ---- LOADING STATE ----
   if (loading) {
@@ -641,6 +736,21 @@ async function handleGenerateTopics(): Promise<void> {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("assessment")}
+              className={`flex-1 py-3 text-sm font-medium transition ${
+                activeTab === "assessment"
+                  ? "bg-blue-50 text-blue-600 border-b-2 border-blue-600"
+                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              📝 Assessment
+              {assessment && assessment.questions.length > 0 && (
+                <span className="ml-1 text-xs opacity-60">
+                  ({assessment.questions.length})
+                </span>
+              )}
+            </button>
           </div>
 
           <div className="p-4">
@@ -767,6 +877,155 @@ async function handleGenerateTopics(): Promise<void> {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Assessment tab */}
+            {activeTab === "assessment" && (
+              <div>
+                {!assessmentLoaded ? (
+                  <p className="text-center text-gray-400 py-8 text-sm">
+                    Loading assessment...
+                  </p>
+                ) : !assessment ? (
+                  <div className="text-center py-8">
+                    <div className="text-4xl mb-3">📝</div>
+                    <p className="text-gray-600 font-medium text-sm mb-1">
+                      No assessment yet
+                    </p>
+                    <p className="text-gray-400 text-xs mb-5">
+                      Auto-generate a 10-question quiz from this lecture&apos;s
+                      transcript
+                    </p>
+                    <button
+                      onClick={handleGenerateAssessment}
+                      disabled={generatingAssessment}
+                      className={`px-6 py-2.5 rounded-xl text-sm font-medium text-white transition ${
+                        generatingAssessment
+                          ? "bg-gray-400 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700 active:scale-95"
+                      }`}
+                    >
+                      {generatingAssessment ? (
+                        <span className="flex items-center gap-2">
+                          <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                          Generating...
+                        </span>
+                      ) : (
+                        "Generate Assessment"
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-gray-400">
+                        {attemptResult
+                          ? `Score: ${attemptResult.score}/${attemptResult.total}`
+                          : "Answer every question, then submit"}
+                      </p>
+                      <button
+                        onClick={handleGenerateAssessment}
+                        disabled={generatingAssessment}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        {generatingAssessment ? "Regenerating..." : "↺ Regenerate"}
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 max-h-125 overflow-y-auto pr-1">
+                      {assessment.questions.map((question, qIndex) => {
+                        const result = attemptResult?.results.find(
+                          (r) => r.question_id === question.id
+                        );
+                        return (
+                          <div
+                            key={question.id}
+                            className="p-3 rounded-xl border bg-gray-50"
+                          >
+                            <p className="font-semibold text-gray-800 text-sm leading-snug mb-2">
+                              {qIndex + 1}. {question.question_text}
+                            </p>
+                            <div className="space-y-1.5">
+                              {question.choices.map((choice) => {
+                                const isSelected =
+                                  answers[question.id] === choice.id;
+                                const isCorrectChoice =
+                                  result?.correct_choice_id === choice.id;
+                                const showResult = !!attemptResult;
+
+                                let stateClasses =
+                                  "border-transparent bg-white hover:bg-blue-50";
+                                if (showResult && isCorrectChoice) {
+                                  stateClasses =
+                                    "border-green-400 bg-green-50";
+                                } else if (
+                                  showResult &&
+                                  isSelected &&
+                                  !isCorrectChoice
+                                ) {
+                                  stateClasses = "border-red-300 bg-red-50";
+                                } else if (isSelected) {
+                                  stateClasses =
+                                    "border-blue-400 bg-blue-50";
+                                }
+
+                                return (
+                                  <label
+                                    key={choice.id}
+                                    className={`flex items-center gap-2 p-2 rounded-lg border cursor-pointer transition ${stateClasses}`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`question-${question.id}`}
+                                      checked={isSelected}
+                                      disabled={!!attemptResult}
+                                      onChange={() =>
+                                        handleSelectAnswer(question.id, choice.id)
+                                      }
+                                      className="shrink-0"
+                                    />
+                                    <span className="text-sm text-gray-700">
+                                      {choice.choice_text}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                            {attemptResult && result?.explanation && (
+                              <p className="text-xs text-gray-500 mt-2 bg-white rounded-lg p-2 border">
+                                💡 {result.explanation}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-4">
+                      {!attemptResult ? (
+                        <button
+                          onClick={handleSubmitAttempt}
+                          disabled={submittingAttempt}
+                          className={`w-full py-3 rounded-xl text-sm font-medium text-white transition ${
+                            submittingAttempt
+                              ? "bg-gray-400 cursor-not-allowed"
+                              : "bg-blue-600 hover:bg-blue-700 active:scale-95"
+                          }`}
+                        >
+                          {submittingAttempt ? "Submitting..." : "Submit Answers"}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleRetakeAssessment}
+                          className="w-full py-3 rounded-xl text-sm font-medium text-blue-600 border border-blue-200 hover:bg-blue-50 transition"
+                        >
+                          ↺ Retake Assessment
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

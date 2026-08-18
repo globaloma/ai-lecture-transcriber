@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 import Link from "next/link";
 import { Toaster } from "react-hot-toast";
+import { AuthProvider } from "@/lib/auth";
+import AuthNav from "@/components/AuthNav";
 
 export const metadata: Metadata = {
     title: "AI Lecture Transcriber",
@@ -17,6 +19,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className="bg-gray-50 min-h-screen">
+              <AuthProvider>
                 <Toaster
                     position="top-center"
                     toastOptions={{
@@ -86,6 +89,8 @@ export default function RootLayout({
                                 >
                                     + Upload
                                 </Link>
+                                <span className="mx-1 h-5 w-px bg-gray-200 hidden sm:block"></span>
+                                <AuthNav />
                             </div>
                         </div>
                     </div>
@@ -94,6 +99,7 @@ export default function RootLayout({
                 <main className="max-w-7xl mx-auto px-4 py-6">
                     {children}
                 </main>
+              </AuthProvider>
             </body>
         </html>
     );

@@ -6,3 +6,5 @@ psycopg2-binary
 python-dotenv
 gunicorn
 requests
+PyJWT
+google-genai

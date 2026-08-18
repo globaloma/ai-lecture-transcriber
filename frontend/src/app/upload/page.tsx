@@ -3,12 +3,14 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadLecture } from "@/lib/api";
+import { useRequireAuth } from "@/lib/auth";
 import { AxiosError } from "axios";
 import type { ApiError } from "@/types";
 import toast from "react-hot-toast";
 
 export default function UploadPage() {
     const router = useRouter();
+    const { token, loading: authLoading } = useRequireAuth();
     const [file, setFile] = useState<File | null>(null);
     const [title, setTitle] = useState<string>("");
     const [uploading, setUploading] = useState<boolean>(false);
@@ -73,6 +75,8 @@ export default function UploadPage() {
         const high = Math.ceil(sizeMB / 1.5);
         return `~${low}–${high} min estimated`;
     }
+
+    if (authLoading || !token) return null;
 
     return (
         <div className="max-w-xl mx-auto">

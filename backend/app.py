@@ -2,15 +2,24 @@ import os
 import uuid
 import time
 import threading
-from flask import Flask, request, jsonify
+import jwt
+from functools import wraps
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from config import Config
-from models import db, Lecture, Transcript, TranscriptSegment, Topic
+from models import (
+    db, User, Lecture, Transcript, TranscriptSegment, Topic,
+    Assessment, Question, Choice, Attempt, AttemptAnswer
+)
 from services.whisper_service import transcribe_file
 from services.search_service import search_transcripts, search_in_lecture
 from services.topic_service import detect_topics
 from services.storage_service import upload_to_storage, delete_from_storage
+from services.auth_service import (
+    hash_password, verify_password, generate_token, decode_token
+)
+from services.assessment_service import generate_mcqs
 from datetime import datetime
 from sqlalchemy import text
 
@@ -48,6 +57,31 @@ def get_file_type(filename: str) -> str:
     if ext in {"mp3", "wav", "m4a", "aac"}:
         return "audio"
     return "video"
+
+
+# =====================
+# AUTH
+# =====================
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Authentication required"}), 401
+
+        token = auth_header.split(" ", 1)[1]
+        try:
+            user_id = decode_token(token)
+        except jwt.PyJWTError:
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        user = db.session.get(User, user_id)
+        if not user:
+            return jsonify({"error": "Invalid or expired token"}), 401
+
+        g.current_user = user
+        return f(*args, **kwargs)
+    return decorated
 
 
 # =====================
@@ -199,15 +233,91 @@ def home():
             "search_in_lecture": "GET /api/lectures/<id>/search?q=keyword",
             "generate_topics": "POST /api/lectures/<id>/topics",
             "get_topics": "GET /api/lectures/<id>/topics",
+            "generate_assessment": "POST /api/lectures/<id>/assessment",
+            "get_assessment": "GET /api/lectures/<id>/assessment",
+            "submit_attempt": "POST /api/assessments/<id>/attempts",
+            "get_attempts": "GET /api/assessments/<id>/attempts",
+            "register": "POST /api/auth/register",
+            "login": "POST /api/auth/login",
+            "me": "GET /api/auth/me",
             "health": "GET /api/health"
         }
     })
 
 
 # =====================
+# AUTH: REGISTER
+# =====================
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    data = request.get_json(silent=True) or {}
+
+    required_fields = [
+        "full_name", "email", "password",
+        "university", "faculty", "department", "matric_number"
+    ]
+    missing = [f for f in required_fields if not data.get(f)]
+    if missing:
+        return jsonify({
+            "error": "Missing required fields",
+            "fields": missing
+        }), 400
+
+    email = data["email"].strip().lower()
+
+    if User.query.filter_by(email=email).first():
+        return jsonify({"error": "An account with this email already exists"}), 409
+
+    user = User(
+        full_name=data["full_name"].strip(),
+        email=email,
+        password_hash=hash_password(data["password"]),
+        university=data["university"].strip(),
+        faculty=data["faculty"].strip(),
+        department=data["department"].strip(),
+        matric_number=data["matric_number"].strip()
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    token = generate_token(user.id)
+    return jsonify({"token": token, "user": user.to_dict()}), 201
+
+
+# =====================
+# AUTH: LOGIN
+# =====================
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user or not verify_password(password, user.password_hash):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    token = generate_token(user.id)
+    return jsonify({"token": token, "user": user.to_dict()}), 200
+
+
+# =====================
+# AUTH: CURRENT USER
+# =====================
+@app.route("/api/auth/me", methods=["GET"])
+@login_required
+def me():
+    return jsonify({"user": g.current_user.to_dict()}), 200
+
+
+# =====================
 # UPLOAD (returns immediately)
 # =====================
 @app.route("/api/upload", methods=["POST"])
+@login_required
 def upload_and_transcribe():
     if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
@@ -231,6 +341,7 @@ def upload_and_transcribe():
 
         # Save lecture immediately with processing status
         lecture = Lecture(
+            user_id=g.current_user.id,
             title=title,
             file_name=unique_filename,
             file_type=file_type,
@@ -275,13 +386,14 @@ def upload_and_transcribe():
 # CHECK STATUS
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/status", methods=["GET"])
+@login_required
 def check_status(lecture_id):
     lecture = Lecture.query.get(lecture_id)
     elapsed_seconds = None
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
-    
+
     
     if lecture.status == "processing" and lecture.processing_started_at:
         elapsed_seconds = round(
@@ -312,8 +424,11 @@ def check_status(lecture_id):
 # GET ALL LECTURES
 # =====================
 @app.route("/api/lectures", methods=["GET"])
+@login_required
 def get_lectures():
-    lectures = Lecture.query.order_by(
+    lectures = Lecture.query.filter_by(
+        user_id=g.current_user.id
+    ).order_by(
         Lecture.uploaded_at.desc()
     ).all()
 
@@ -327,10 +442,11 @@ def get_lectures():
 # GET ONE LECTURE
 # =====================
 @app.route("/api/lectures/<int:lecture_id>", methods=["GET"])
+@login_required
 def get_lecture(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     data = lecture.to_dict()
@@ -349,10 +465,11 @@ def get_lecture(lecture_id):
 # DELETE LECTURE
 # =====================
 @app.route("/api/lectures/<int:lecture_id>", methods=["DELETE"])
+@login_required
 def delete_lecture(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     try:
@@ -370,6 +487,7 @@ def delete_lecture(lecture_id):
 # SEARCH ALL
 # =====================
 @app.route("/api/search", methods=["GET"])
+@login_required
 def search():
     query = request.args.get("q", "").strip()
 
@@ -382,7 +500,7 @@ def search():
         }), 400
 
     try:
-        results = search_transcripts(query)
+        results = search_transcripts(query, g.current_user.id)
         return jsonify({
             "query": query,
             "results": results,
@@ -401,6 +519,7 @@ def search():
 # SEARCH IN LECTURE
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/search", methods=["GET"])
+@login_required
 def search_lecture(lecture_id):
     query = request.args.get("q", "").strip()
 
@@ -408,11 +527,11 @@ def search_lecture(lecture_id):
         return jsonify({"error": "Search query is required"}), 400
 
     lecture = Lecture.query.get(lecture_id)
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     try:
-        results = search_in_lecture(query, lecture_id)
+        results = search_in_lecture(query, lecture_id, g.current_user.id)
         return jsonify({
             "query": query,
             "lecture_id": lecture_id,
@@ -433,10 +552,11 @@ def search_lecture(lecture_id):
 # GENERATE TOPICS
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/topics", methods=["POST"])
+@login_required
 def generate_topics(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     if not lecture.transcript:
@@ -497,10 +617,11 @@ def generate_topics(lecture_id):
 # GET TOPICS
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/topics", methods=["GET"])
+@login_required
 def get_topics(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     if not lecture.transcript:
@@ -522,10 +643,11 @@ def get_topics(lecture_id):
 # EXPORT SRT
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/export/srt", methods=["GET"])
+@login_required
 def export_srt(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     if not lecture.transcript:
@@ -564,10 +686,11 @@ def export_srt(lecture_id):
 # EXPORT TXT
 # =====================
 @app.route("/api/lectures/<int:lecture_id>/export/txt", methods=["GET"])
+@login_required
 def export_txt(lecture_id):
     lecture = Lecture.query.get(lecture_id)
 
-    if not lecture:
+    if not lecture or lecture.user_id != g.current_user.id:
         return jsonify({"error": "Lecture not found"}), 404
 
     if not lecture.transcript:
@@ -582,6 +705,174 @@ def export_txt(lecture_id):
                 f"attachment; filename={lecture.title}.txt"
         }
     )
+
+
+# =====================
+# GENERATE ASSESSMENT
+# =====================
+@app.route("/api/lectures/<int:lecture_id>/assessment", methods=["POST"])
+@login_required
+def generate_assessment(lecture_id):
+    lecture = Lecture.query.get(lecture_id)
+
+    if not lecture or lecture.user_id != g.current_user.id:
+        return jsonify({"error": "Lecture not found"}), 404
+
+    if not lecture.transcript:
+        return jsonify({"error": "No transcript yet"}), 400
+
+    try:
+        mcqs = generate_mcqs(lecture.transcript.full_text, n=10)
+
+        if not mcqs:
+            return jsonify({"error": "Could not generate assessment"}), 400
+
+        # Replace any existing assessment for this lecture
+        if lecture.assessment:
+            db.session.delete(lecture.assessment)
+            db.session.flush()
+
+        assessment = Assessment(lecture_id=lecture.id)
+        db.session.add(assessment)
+        db.session.flush()
+
+        for i, item in enumerate(mcqs):
+            question = Question(
+                assessment_id=assessment.id,
+                question_text=item["question"],
+                explanation=item.get("explanation"),
+                order=i
+            )
+            db.session.add(question)
+            db.session.flush()
+
+            for j, choice_text in enumerate(item["choices"]):
+                db.session.add(Choice(
+                    question_id=question.id,
+                    choice_text=choice_text,
+                    is_correct=(j == item["correct_index"]),
+                    order=j
+                ))
+
+        db.session.commit()
+
+        return jsonify(assessment.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Assessment generation error: {str(e)}")
+        return jsonify({
+            "error": "Assessment generation failed",
+            "details": str(e)
+        }), 500
+
+
+# =====================
+# GET ASSESSMENT (no correct answers revealed)
+# =====================
+@app.route("/api/lectures/<int:lecture_id>/assessment", methods=["GET"])
+@login_required
+def get_assessment(lecture_id):
+    lecture = Lecture.query.get(lecture_id)
+
+    if not lecture or lecture.user_id != g.current_user.id:
+        return jsonify({"error": "Lecture not found"}), 404
+
+    if not lecture.assessment:
+        return jsonify({"error": "No assessment generated yet"}), 404
+
+    return jsonify(lecture.assessment.to_dict(reveal_answers=False)), 200
+
+
+# =====================
+# SUBMIT ASSESSMENT ATTEMPT
+# =====================
+@app.route("/api/assessments/<int:assessment_id>/attempts", methods=["POST"])
+@login_required
+def submit_attempt(assessment_id):
+    assessment = db.session.get(Assessment, assessment_id)
+
+    if not assessment or assessment.lecture.user_id != g.current_user.id:
+        return jsonify({"error": "Assessment not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    answers = data.get("answers") or {}
+
+    if not answers:
+        return jsonify({"error": "No answers submitted"}), 400
+
+    score = 0
+    results = []
+
+    for question in assessment.questions:
+        selected_choice_id = answers.get(str(question.id))
+        correct_choice = next(
+            (c for c in question.choices if c.is_correct), None
+        )
+        is_correct = (
+            selected_choice_id is not None
+            and correct_choice is not None
+            and int(selected_choice_id) == correct_choice.id
+        )
+        if is_correct:
+            score += 1
+
+        results.append({
+            "question_id": question.id,
+            "selected_choice_id": selected_choice_id,
+            "correct_choice_id": correct_choice.id if correct_choice else None,
+            "is_correct": is_correct,
+            "explanation": question.explanation
+        })
+
+    attempt = Attempt(
+        assessment_id=assessment.id,
+        user_id=g.current_user.id,
+        score=score,
+        total=len(assessment.questions)
+    )
+    db.session.add(attempt)
+    db.session.flush()
+
+    for result in results:
+        db.session.add(AttemptAnswer(
+            attempt_id=attempt.id,
+            question_id=result["question_id"],
+            selected_choice_id=result["selected_choice_id"],
+            is_correct=result["is_correct"]
+        ))
+
+    db.session.commit()
+
+    return jsonify({
+        "attempt_id": attempt.id,
+        "score": score,
+        "total": len(assessment.questions),
+        "results": results
+    }), 201
+
+
+# =====================
+# GET ATTEMPT HISTORY
+# =====================
+@app.route("/api/assessments/<int:assessment_id>/attempts", methods=["GET"])
+@login_required
+def get_attempts(assessment_id):
+    assessment = db.session.get(Assessment, assessment_id)
+
+    if not assessment or assessment.lecture.user_id != g.current_user.id:
+        return jsonify({"error": "Assessment not found"}), 404
+
+    attempts = Attempt.query.filter_by(
+        assessment_id=assessment.id,
+        user_id=g.current_user.id
+    ).order_by(Attempt.submitted_at.desc()).all()
+
+    return jsonify({
+        "assessment_id": assessment.id,
+        "attempts": [a.to_dict() for a in attempts],
+        "total": len(attempts)
+    }), 200
 
 
 # =====================
