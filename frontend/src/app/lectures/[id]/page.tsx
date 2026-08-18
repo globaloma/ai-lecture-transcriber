@@ -431,7 +431,7 @@ async function handleGenerateTopics(): Promise<void> {
   }
 
   // ---- COMPLETED STATE ----
-  const mediaUrl = `${API_BASE_URL}/uploads/${lecture.file_name}`;
+  const mediaUrl = lecture.file_url ?? `${API_BASE_URL}/uploads/${lecture.file_name}`;
   const isVideo = lecture.file_type === "video";
 
   return (

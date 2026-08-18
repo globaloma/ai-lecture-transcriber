@@ -1,37 +1,37 @@
-import whisper
+from faster_whisper import WhisperModel
 
-# Load base model once
-model = whisper.load_model("base")
+# int8 on CPU keeps memory low enough for small hosting tiers (e.g. Render free)
+model = WhisperModel("base", device="cpu", compute_type="int8")
+
 
 def transcribe_file(file_path):
     """
-    Transcribes an audio or video file using Whisper.
+    Transcribes an audio or video file using faster-whisper.
     Returns full text and timestamped segments.
     """
-    result = model.transcribe(
+    segments_gen, info = model.transcribe(
         file_path,
-        fp16=False,              # CPU-safe
-        language="en",           # Explicit language
+        language="en",
         task="transcribe",
-        beam_size=5,             # Better accuracy
-        best_of=5,               # Try multiple and pick best
-        temperature=0.0          # More deterministic
+        beam_size=5,
+        best_of=5,
+        temperature=0.0,
     )
 
-    full_text = result.get("text", "").strip()
-    segments = result.get("segments", [])
-
     formatted_segments = []
-    for seg in segments:
+    text_parts = []
+    for i, seg in enumerate(segments_gen):
+        text = seg.text.strip()
+        text_parts.append(text)
         formatted_segments.append({
-            "id": seg.get("id"),
-            "start": seg.get("start"),
-            "end": seg.get("end"),
-            "text": seg.get("text", "").strip()
+            "id": i,
+            "start": seg.start,
+            "end": seg.end,
+            "text": text
         })
 
     return {
-        "full_text": full_text,
+        "full_text": " ".join(text_parts).strip(),
         "segments": formatted_segments,
-        "language": result.get("language")
+        "language": info.language
     }

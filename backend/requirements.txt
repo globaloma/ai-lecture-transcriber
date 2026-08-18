@@ -1,8 +1,8 @@
 flask-sqlalchemy
-flask 
-flask-cors 
-openai-whisper
-moviepy
+flask
+flask-cors
+faster-whisper
 psycopg2-binary
 python-dotenv
 gunicorn
+requests

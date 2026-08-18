@@ -2,7 +2,7 @@ import os
 import uuid
 import time
 import threading
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from config import Config
@@ -10,7 +10,9 @@ from models import db, Lecture, Transcript, TranscriptSegment, Topic
 from services.whisper_service import transcribe_file
 from services.search_service import search_transcripts, search_in_lecture
 from services.topic_service import detect_topics
+from services.storage_service import upload_to_storage, delete_from_storage
 from datetime import datetime
+from sqlalchemy import text
 
 app = Flask(__name__)
 
@@ -51,90 +53,6 @@ def get_file_type(filename: str) -> str:
 # =====================
 # BACKGROUND WORKER
 # =====================
-# def process_transcription(app_context, lecture_id: int, file_path: str):
-#     """
-#     Runs Whisper transcription in a background thread.
-#     Updates lecture status when done.
-#     """
-#     with app_context:
-#         try:
-#             lecture = Lecture.query.get(lecture_id)
-#             if not lecture:
-#                 print(f"[BG] Lecture {lecture_id} not found")
-#                 return
-
-#             print(f"[BG] Starting transcription: lecture {lecture_id}")
-#             start_time = time.time()
-
-#             # Run Whisper
-#             result = transcribe_file(file_path)
-
-#             end_time = time.time()
-#             duration = round(end_time - start_time, 2)
-#             print(f"[BG] Transcription done in {duration}s")
-
-#             # Save transcript
-#             transcript = Transcript(
-#                 lecture_id=lecture.id,
-#                 full_text=result["full_text"],
-#                 language=result["language"]
-#             )
-#             db.session.add(transcript)
-#             db.session.commit()
-
-#             # Save segments
-#             for seg in result["segments"]:
-#                 segment = TranscriptSegment(
-#                     transcript_id=transcript.id,
-#                     segment_index=seg["id"],
-#                     start_time=seg["start"],
-#                     end_time=seg["end"],
-#                     segment_text=seg["text"]
-#                 )
-#                 db.session.add(segment)
-#             db.session.commit()
-#             print(f"[BG] Saved {len(result['segments'])} segments")
-
-#             # Detect topics
-#             print("[BG] Detecting topics...")
-#             segment_list = [s.to_dict() for s in transcript.segments]
-#             detected_topics = detect_topics(segment_list)
-
-#             for item in detected_topics:
-#                 topic = Topic(
-#                     transcript_id=transcript.id,
-#                     topic_title=item["topic_title"],
-#                     start_time=item["start_time"],
-#                     end_time=item["end_time"],
-#                     description=item["description"]
-#                 )
-#                 db.session.add(topic)
-#             db.session.commit()
-#             print(f"[BG] Saved {len(detected_topics)} topics")
-
-#             # Mark as completed
-#             lecture.status = "completed"
-#             lecture.processing_time = duration
-#             db.session.commit()
-
-#             print(f"[BG] Lecture {lecture_id} completed in {duration}s")
-
-#         except Exception as e:
-#             print(f"[BG] Error on lecture {lecture_id}: {str(e)}")
-#             try:
-#                 lecture = Lecture.query.get(lecture_id)
-#                 if lecture:
-#                     lecture.status = "failed"
-#                     lecture.error_message = str(e)
-#                     db.session.commit()
-#             except Exception as inner:
-#                 print(f"[BG] Could not update status: {str(inner)}")
-#                 db.session.rollback()
-
-
-# =====================
-# BACKGROUND WORKER
-# =====================
 def process_transcription(app_context, lecture_id: int, file_path: str):
     """
     Runs Whisper transcription in a background thread.
@@ -148,6 +66,17 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
             if not lecture:
                 print(f"[BG] Lecture {lecture_id} not found")
                 return
+
+            # Persist the original file to Supabase Storage right away so it
+            # survives restarts (Render's free tier disk is ephemeral) even
+            # if transcription below fails.
+            try:
+                public_url = upload_to_storage(file_path, lecture.file_name)
+                lecture.file_path = public_url
+                db.session.commit()
+                print(f"[BG] Uploaded to storage: {public_url}")
+            except Exception as e:
+                print(f"[BG] Storage upload failed: {str(e)}")
 
             # IMPORTANT:
             # Release any checked-out DB connection before the long Whisper job
@@ -238,6 +167,13 @@ def process_transcription(app_context, lecture_id: int, file_path: str):
                 db.session.rollback()
                 print(f"[BG] Could not update status: {str(inner)}")
 
+        finally:
+            # Ephemeral hosts (e.g. Render free tier) wipe local disk on
+            # restart anyway; clean up promptly so it doesn't fill up.
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+
 # =====================
 # CREATE TABLES
 # =====================
@@ -262,7 +198,8 @@ def home():
             "search": "GET /api/search?q=keyword",
             "search_in_lecture": "GET /api/lectures/<id>/search?q=keyword",
             "generate_topics": "POST /api/lectures/<id>/topics",
-            "get_topics": "GET /api/lectures/<id>/topics"
+            "get_topics": "GET /api/lectures/<id>/topics",
+            "health": "GET /api/health"
         }
     })
 
@@ -418,8 +355,10 @@ def delete_lecture(lecture_id):
     if not lecture:
         return jsonify({"error": "Lecture not found"}), 404
 
-    if os.path.exists(lecture.file_path):
-        os.remove(lecture.file_path)
+    try:
+        delete_from_storage(lecture.file_name)
+    except Exception as e:
+        print(f"Storage delete error: {str(e)}")
 
     db.session.delete(lecture)
     db.session.commit()
@@ -646,11 +585,12 @@ def export_txt(lecture_id):
 
 
 # =====================
-# SERVE FILES
+# HEALTH CHECK (used by the keep-alive ping and Render's health check)
 # =====================
-@app.route("/uploads/<filename>")
-def serve_file(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+@app.route("/api/health")
+def health():
+    db.session.execute(text("SELECT 1"))
+    return jsonify({"status": "ok"}), 200
 
 
 if __name__ == "__main__":

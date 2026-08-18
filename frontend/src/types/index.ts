@@ -28,6 +28,7 @@ export interface Lecture {
     title: string;
     file_name: string;
     file_type: string;
+    file_url: string | null;
     status: "processing" | "completed" | "failed";
     processing_time: number | null;
     error_message: string | null;

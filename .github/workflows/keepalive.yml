@@ -1,0 +1,19 @@
+name: Keep Supabase and Render awake
+
+on:
+  schedule:
+    # 4x/day, evenly spaced (UTC)
+    - cron: "0 0,6,12,18 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          if [ -z "${{ vars.RENDER_BACKEND_URL }}" ]; then
+            echo "RENDER_BACKEND_URL repo variable is not set. Set it in Settings > Actions > Variables."
+            exit 1
+          fi
+          curl -sf --max-time 30 "${{ vars.RENDER_BACKEND_URL }}/api/health"

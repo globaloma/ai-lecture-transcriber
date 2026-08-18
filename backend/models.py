@@ -35,6 +35,7 @@ class Lecture(db.Model):
             "title": self.title,
             "file_name": self.file_name,
             "file_type": self.file_type,
+            "file_url": self.file_path,
             "status": self.status,
             "processing_time": self.processing_time,
             "processing_started_at": self.processing_started_at,

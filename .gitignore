@@ -5,3 +5,12 @@
 # Virtual Envs
 venv/
 **/venv/
+
+# Uploaded lecture files (now stored in Supabase Storage, not the repo)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
