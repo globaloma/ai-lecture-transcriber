@@ -192,7 +192,7 @@ function ProcessingScreen({
           </div>
 
           <Link
-            href="/"
+            href="/dashboard"
             className="block w-full py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition"
           >
             ← Back to Home
@@ -475,7 +475,7 @@ async function handleGenerateTopics(): Promise<void> {
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <p className="text-red-500 text-lg mb-4">{error}</p>
-          <Link href="/" className="text-blue-600 hover:underline text-sm">
+          <Link href="/dashboard" className="text-blue-600 hover:underline text-sm">
             ← Back to Home
           </Link>
         </div>
@@ -514,7 +514,7 @@ async function handleGenerateTopics(): Promise<void> {
               </p>
             )}
             <Link
-              href="/"
+              href="/dashboard"
               className="block w-full py-3 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition"
             >
               ← Back to Home

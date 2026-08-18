@@ -51,7 +51,7 @@ export default function SignupPage() {
             setSubmitting(true);
             await register(form);
             toast.success("Account created!");
-            router.push("/");
+            router.push("/dashboard");
         } catch (err) {
             const axiosError = err as AxiosError<ApiError>;
             toast.error(

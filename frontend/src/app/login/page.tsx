@@ -27,7 +27,7 @@ export default function LoginPage() {
             setSubmitting(true);
             await login(email.trim(), password);
             toast.success("Welcome back!");
-            router.push("/");
+            router.push("/dashboard");
         } catch (err) {
             const axiosError = err as AxiosError<ApiError>;
             toast.error(

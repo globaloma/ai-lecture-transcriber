@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider } from "@/lib/auth";
 import AuthNav from "@/components/AuthNav";
+import PrimaryNav from "@/components/PrimaryNav";
 
 export const metadata: Metadata = {
     title: "AI Lecture Transcriber",
@@ -55,7 +56,7 @@ export default function RootLayout({
                                 href="/"
                                 className="text-lg font-bold text-blue-600 flex items-center gap-2"
                             >
-                                
+                                <span>🎓</span>
                                 <span className="hidden sm:inline">
                                     AI Lecture Transcriber
                                 </span>
@@ -65,31 +66,7 @@ export default function RootLayout({
                             </Link>
 
                             <div className="flex items-center gap-1">
-                                <Link
-                                    href="/"
-                                    className="text-gray-600 hover:text-blue-600 transition px-3 py-2 rounded-lg hover:bg-blue-50 text-sm font-medium"
-                                >
-                                    Home
-                                </Link>
-                                <Link
-                                    href="/lectures"
-                                    className="text-gray-600 hover:text-blue-600 transition px-3 py-2 rounded-lg hover:bg-blue-50 text-sm font-medium hidden sm:block"
-                                >
-                                    Lectures
-                                </Link>
-                                <Link
-                                    href="/search"
-                                    className="text-gray-600 hover:text-blue-600 transition px-3 py-2 rounded-lg hover:bg-blue-50 text-sm font-medium"
-                                >
-                                    Search
-                                </Link>
-                                <Link
-                                    href="/upload"
-                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition text-sm font-medium ml-1"
-                                >
-                                    + Upload
-                                </Link>
-                                <span className="mx-1 h-5 w-px bg-gray-200 hidden sm:block"></span>
+                                <PrimaryNav />
                                 <AuthNav />
                             </div>
                         </div>

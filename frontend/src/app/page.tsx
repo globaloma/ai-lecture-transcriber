@@ -1,296 +1,183 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
-import { getLectures, deleteLecture } from "@/lib/api";
-import { useRequireAuth } from "@/lib/auth";
-import type { Lecture, LecturesResponse } from "@/types";
-import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 
-export default function HomePage() {
-  const { token, loading: authLoading } = useRequireAuth();
-  const [lectures, setLectures] = useState<Lecture[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+const FEATURES = [
+  {
+    icon: "🎙️",
+    title: "Accurate Transcription",
+    description:
+      "AI transcribes your audio and video lectures with timestamps, so you can jump straight to the moment you need.",
+  },
+  {
+    icon: "🏷️",
+    title: "Topic Breakdown",
+    description:
+      "Automatically detects the key topics covered in each lecture for a quick overview before you dive in.",
+  },
+  {
+    icon: "📝",
+    title: "Auto-Generated Quizzes",
+    description:
+      "Turn any transcript into a 10-question practice assessment and test what you've actually learned.",
+  },
+  {
+    icon: "🔍",
+    title: "Full-Text Search",
+    description:
+      "Search across every lecture you've uploaded to find exactly where a topic was discussed.",
+  },
+];
+
+const STEPS = [
+  {
+    number: "1",
+    title: "Upload",
+    description: "Upload an audio or video recording of your lecture.",
+  },
+  {
+    number: "2",
+    title: "Transcribe",
+    description:
+      "AI transcribes it and automatically detects the key topics.",
+  },
+  {
+    number: "3",
+    title: "Study & Test",
+    description:
+      "Review the transcript, jump to any topic, and take an auto-generated quiz.",
+  },
+];
+
+export default function LandingPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    if (!token) return;
-
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    const loadLectures = async () => {
-      try {
-        const data = await fetchLectures();
-        if (cancelled) return;
-
-        const hasProcessing = data.lectures.some(
-          (lecture) => lecture.status === "processing"
-        );
-
-        if (hasProcessing) {
-          timeoutId = setTimeout(loadLectures, 10000);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    loadLectures();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [token]);
-
-  async function fetchLectures(): Promise<LecturesResponse> {
-    try {
-      const data = await getLectures();
-      setLectures(data.lectures);
-      return data;
-    } catch (err) {
-      console.error(err);
-      throw err;
-    } finally {
-      setLoading(false);
+    if (!loading && user) {
+      router.push("/dashboard");
     }
-  }
+  }, [loading, user, router]);
 
-  async function handleDelete(id: number, title: string): Promise<void> {
-    if (!confirm(`Delete "${title}"?`)) return;
-    try {
-      await deleteLecture(id);
-      setLectures((prev) => prev.filter((l) => l.id !== id));
-      toast.success("Lecture deleted");
-    } catch (err) {
-      toast.error("Failed to delete");
-      console.error(err);
-    }
-  }
-
-  function formatDate(dateString: string): string {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  function formatProcessingTime(seconds: number | null): string {
-    if (!seconds) return "";
-    const mins = Math.round(seconds / 60);
-    return mins < 1 ? "< 1 min" : `${mins} min`;
-  }
-
-  const processingCount = lectures.filter(
-    (l) => l.status === "processing"
-  ).length;
-
-  const completedCount = lectures.filter(
-    (l) => l.status === "completed"
-  ).length;
-
-  if (authLoading || !token) return null;
-
-    return (
-        <div>
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-                        📚 My Lectures
-                    </h1>
-                    <p className="text-gray-500 text-sm mt-1">
-                        {completedCount} ready
-                        {processingCount > 0 && (
-                            <span className="ml-2 text-yellow-600">
-                                • {processingCount} processing
-                            </span>
-                        )}
-                    </p>
-                </div>
-                <Link
-                    href="/upload"
-                    className="shrink-0 bg-blue-600 text-white px-4 py-2.5 rounded-xl hover:bg-blue-700 font-medium transition text-sm"
-                >
-                    + Upload
-                </Link>
-            </div>
-
-            {/* Processing banner */}
-            {processingCount > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 flex items-start gap-3">
-                    <div className="animate-spin h-5 w-5 border-2 border-amber-500 border-t-transparent rounded-full shrink-0 mt-0.5"></div>
-                    <div>
-                        <p className="text-amber-800 font-medium text-sm">
-                            {processingCount} lecture
-                            {processingCount > 1 ? "s are" : " is"} being
-                            transcribed
-                        </p>
-                        <p className="text-amber-600 text-xs mt-0.5">
-                            Page refreshes automatically every 10 seconds
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            {/* Loading skeletons */}
-            {loading && (
-                <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                        <div
-                            key={i}
-                            className="bg-white rounded-xl border p-5 animate-pulse"
-                        >
-                            <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
-                            <div className="flex gap-2">
-                                <div className="h-3 bg-gray-200 rounded w-16"></div>
-                                <div className="h-3 bg-gray-200 rounded w-24"></div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* Empty state */}
-            {!loading && lectures.length === 0 && (
-                <div className="text-center py-20 bg-white rounded-2xl border">
-                    <div className="text-6xl mb-4">🎓</div>
-                    <h2 className="text-lg font-semibold text-gray-600 mb-2">
-                        No lectures yet
-                    </h2>
-                    <p className="text-gray-400 text-sm mb-6">
-                        Upload your first lecture to get started
-                    </p>
-                    <Link
-                        href="/upload"
-                        className="inline-block bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition font-medium"
-                    >
-                        Upload Now
-                    </Link>
-                </div>
-            )}
-
-            {/* Lecture list */}
-            {!loading && (
-                <div className="space-y-3">
-                    {lectures.map((lecture) => (
-                        <div
-                            key={lecture.id}
-                            className={`bg-white rounded-xl border p-4 sm:p-5 transition hover:shadow-sm ${
-                                lecture.status === "processing"
-                                    ? "border-l-4 border-l-amber-400"
-                                    : lecture.status === "failed"
-                                    ? "border-l-4 border-l-red-400"
-                                    : "border-l-4 border-l-blue-500"
-                            }`}
-                        >
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1 min-w-0">
-                                    {/* Title */}
-                                    {lecture.status === "completed" ? (
-                                        <Link
-                                            href={`/lectures/${lecture.id}`}
-                                            className="font-semibold text-blue-600 hover:underline line-clamp-2 text-sm sm:text-base leading-snug"
-                                        >
-                                            {lecture.title}
-                                        </Link>
-                                    ) : (
-                                        <Link
-                                            href={`/lectures/${lecture.id}`}
-                                            className="font-semibold text-gray-600 line-clamp-2 text-sm sm:text-base leading-snug"
-                                        >
-                                            {lecture.title}
-                                        </Link>
-                                    )}
-
-                                    {/* Meta */}
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                        <span className="text-xs text-gray-400">
-                                            {lecture.file_type === "video"
-                                                ? "🎬"
-                                                : "🎧"}{" "}
-                                            {lecture.file_type}
-                                        </span>
-                                        <span className="text-gray-200">
-                                            |
-                                        </span>
-                                        <span className="text-xs text-gray-400">
-                                            {formatDate(lecture.uploaded_at)}
-                                        </span>
-
-                                        {/* Status badge */}
-                                        {lecture.status === "processing" && (
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 font-medium">
-                                                <span className="animate-spin h-2.5 w-2.5 border border-amber-600 border-t-transparent rounded-full"></span>
-                                                Processing
-                                            </span>
-                                        )}
-                                        {lecture.status === "completed" && (
-                                            <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700 font-medium">
-                                                ✓ Ready
-                                            </span>
-                                        )}
-                                        {lecture.status === "failed" && (
-                                            <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 font-medium">
-                                                ✗ Failed
-                                            </span>
-                                        )}
-
-                                        {lecture.processing_time && (
-                                            <span className="text-xs text-gray-400">
-                                                ⏱{" "}
-                                                {formatProcessingTime(
-                                                    lecture.processing_time
-                                                )}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {lecture.status === "failed" &&
-                                        lecture.error_message && (
-                                            <p className="text-xs text-red-500 mt-1 line-clamp-1">
-                                                {lecture.error_message}
-                                            </p>
-                                        )}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex items-center gap-2 shrink-0">
-                                    {lecture.status === "completed" && (
-                                        <Link
-                                            href={`/lectures/${lecture.id}`}
-                                            className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition text-xs font-medium"
-                                        >
-                                            View
-                                        </Link>
-                                    )}
-                                    {lecture.status === "processing" && (
-                                        <Link
-                                            href={`/lectures/${lecture.id}`}
-                                            className="bg-amber-50 text-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-100 transition text-xs font-medium"
-                                        >
-                                            Status
-                                        </Link>
-                                    )}
-                                    <button
-                                        onClick={() =>
-                                            handleDelete(
-                                                lecture.id,
-                                                lecture.title
-                                            )
-                                        }
-                                        className="text-gray-400 hover:text-red-500 transition p-1.5 rounded-lg hover:bg-red-50"
-                                        title="Delete"
-                                    >
-                                        🗑️
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+  // Render the marketing page immediately (don't block on the auth check —
+  // it's only used to redirect an already-signed-in visitor away).
+  return (
+    <div>
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-linear-to-b from-blue-50 to-transparent rounded-3xl px-6 sm:px-12 py-16 sm:py-24 text-center">
+        <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
+          🎓 Built for students &amp; lecturers
+        </span>
+        <h1 className="text-3xl sm:text-5xl font-bold text-gray-800 leading-tight max-w-3xl mx-auto">
+          Turn lecture recordings into{" "}
+          <span className="text-blue-600">transcripts, topics, and quizzes</span>{" "}
+          — automatically
+        </h1>
+        <p className="text-gray-500 text-base sm:text-lg mt-5 max-w-xl mx-auto">
+          Upload any lecture recording and get an accurate transcript, a
+          key-topic breakdown, and an auto-generated practice quiz in
+          minutes.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
+          <Link
+            href="/signup"
+            className="w-full sm:w-auto bg-blue-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-blue-700 active:scale-95 transition text-sm"
+          >
+            Get Started Free
+          </Link>
+          <Link
+            href="/login"
+            className="w-full sm:w-auto bg-white text-gray-700 border border-gray-200 px-8 py-3.5 rounded-xl font-semibold hover:bg-gray-50 transition text-sm"
+          >
+            Sign In
+          </Link>
         </div>
-    );
+        <p className="text-xs text-gray-400 mt-4">
+          Free to use · No credit card required
+        </p>
+      </section>
+
+      {/* Features */}
+      <section className="py-16 sm:py-20">
+        <div className="text-center max-w-xl mx-auto mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">
+            Everything you need to study smarter
+          </h2>
+          <p className="text-gray-500 text-sm sm:text-base mt-2">
+            From raw recording to a study-ready lecture in a few clicks.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {FEATURES.map((feature) => (
+            <div
+              key={feature.title}
+              className="bg-white rounded-2xl border p-6 hover:shadow-sm transition"
+            >
+              <div className="text-3xl mb-3">{feature.icon}</div>
+              <h3 className="font-semibold text-gray-800 text-base mb-1.5">
+                {feature.title}
+              </h3>
+              <p className="text-gray-500 text-sm leading-relaxed">
+                {feature.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="py-16 sm:py-20 bg-gray-50 rounded-3xl px-6 sm:px-12">
+        <div className="text-center max-w-xl mx-auto mb-10">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">
+            How it works
+          </h2>
+          <p className="text-gray-500 text-sm sm:text-base mt-2">
+            Three steps between a recording and a finished study session.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          {STEPS.map((step) => (
+            <div key={step.number} className="text-center">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center mx-auto mb-4">
+                {step.number}
+              </div>
+              <h3 className="font-semibold text-gray-800 text-base mb-1.5">
+                {step.title}
+              </h3>
+              <p className="text-gray-500 text-sm leading-relaxed">
+                {step.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="py-16 sm:py-20 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">
+          Ready to get more out of your lectures?
+        </h2>
+        <p className="text-gray-500 text-sm sm:text-base mt-2 mb-7">
+          Create your free account and upload your first lecture in minutes.
+        </p>
+        <Link
+          href="/signup"
+          className="inline-block bg-blue-600 text-white px-8 py-3.5 rounded-xl font-semibold hover:bg-blue-700 active:scale-95 transition text-sm"
+        >
+          Create Your Free Account
+        </Link>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t pt-8 pb-4 text-center">
+        <p className="text-xs text-gray-400">
+          🎓 AI Lecture Transcriber — AI-powered transcription for learning in
+          tertiary institutions
+        </p>
+      </footer>
+    </div>
+  );
 }
