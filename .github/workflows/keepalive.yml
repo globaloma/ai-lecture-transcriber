@@ -16,4 +16,7 @@ jobs:
             echo "RENDER_BACKEND_URL repo variable is not set. Set it in Settings > Actions > Variables."
             exit 1
           fi
-          curl -sf --max-time 30 "${{ vars.RENDER_BACKEND_URL }}/api/health"
+          # Render free tier cold-starts after 15 min idle (can take 30-60s+),
+          # so retry with a generous per-attempt timeout instead of failing outright.
+          curl -sf --max-time 90 --retry 3 --retry-delay 10 --retry-all-errors \
+            "${{ vars.RENDER_BACKEND_URL }}/api/health"
