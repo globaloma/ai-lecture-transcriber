@@ -74,7 +74,7 @@ export default function LandingPage() {
         <h1 className="text-3xl sm:text-5xl font-bold text-gray-800 leading-tight max-w-3xl mx-auto">
           Turn lecture recordings into{" "}
           <span className="text-blue-600">transcripts, topics, and quizzes</span>{" "}
-          — automatically
+          automatically
         </h1>
         <p className="text-gray-500 text-base sm:text-lg mt-5 max-w-xl mx-auto">
           Upload any lecture recording and get an accurate transcript, a
@@ -174,7 +174,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t pt-8 pb-4 text-center">
         <p className="text-xs text-gray-400">
-          🎓 AI Lecture Transcriber — AI-powered transcription for learning in
+          🎓 AI Lecture Transcriber :  AI-powered transcription for learning in
           tertiary institutions
         </p>
       </footer>
