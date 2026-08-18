@@ -9,6 +9,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bake the model weights into the image so cold starts on ephemeral hosting
+# (e.g. Render free tier) don't need to re-download from Hugging Face.
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+
 COPY . .
 
 ENV PORT=10000
