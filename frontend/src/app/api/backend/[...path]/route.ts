@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Render's free tier can take 30-60s to wake up from a cold start; without
+// this the platform's default function timeout can cut the proxy off before
+// the backend responds, even though the backend request completes anyway.
+export const maxDuration = 60;
 
 const BACKEND_URL = process.env.BACKEND_URL!;
 

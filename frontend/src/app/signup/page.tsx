@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
@@ -30,9 +30,23 @@ const FIELDS: { name: keyof RegisterPayload; label: string; type?: string; place
 
 export default function SignupPage() {
     const router = useRouter();
-    const { register } = useAuth();
+    const { register, login } = useAuth();
     const [form, setForm] = useState<RegisterPayload>(EMPTY_FORM);
     const [submitting, setSubmitting] = useState<boolean>(false);
+    const [slow, setSlow] = useState<boolean>(false);
+    const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (submitting) {
+            slowTimer.current = setTimeout(() => setSlow(true), 5000);
+        } else {
+            if (slowTimer.current) clearTimeout(slowTimer.current);
+            setSlow(false);
+        }
+        return () => {
+            if (slowTimer.current) clearTimeout(slowTimer.current);
+        };
+    }, [submitting]);
 
     function handleChange(field: keyof RegisterPayload, value: string): void {
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -53,9 +67,24 @@ export default function SignupPage() {
             toast.success("Account created!");
             router.push("/dashboard");
         } catch (err) {
+            // The backend can be slow to respond right after waking up from
+            // an idle sleep (Render free tier), which can make a signup that
+            // actually succeeded look like it failed here. Before showing an
+            // error, check whether the account exists by trying to log in
+            // with the same credentials.
+            try {
+                await login(form.email, form.password);
+                toast.success("Account created!");
+                router.push("/dashboard");
+                return;
+            } catch {
+                // Fall through to the original error below.
+            }
+
             const axiosError = err as AxiosError<ApiError>;
             toast.error(
-                axiosError.response?.data?.error || "Sign up failed. Please try again."
+                axiosError.response?.data?.error ||
+                    "Sign up failed. The server may still be waking up — please try again in a moment."
             );
         } finally {
             setSubmitting(false);
@@ -105,12 +134,19 @@ export default function SignupPage() {
                     {submitting ? (
                         <span className="flex items-center justify-center gap-2">
                             <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                            Creating account...
+                            {slow ? "Waking up the server..." : "Creating account..."}
                         </span>
                     ) : (
                         "Sign Up"
                     )}
                 </button>
+
+                {slow && (
+                    <p className="text-center text-xs text-gray-400">
+                        The server can take up to a minute to wake up after being idle.
+                        Please don&apos;t close this page or submit again.
+                    </p>
+                )}
             </form>
 
             <p className="text-center text-sm text-gray-500 mt-4">
