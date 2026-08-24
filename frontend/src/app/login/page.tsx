@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +14,20 @@ export default function LoginPage() {
     const [email, setEmail] = useState<string>("");
     const [password, setPassword] = useState<string>("");
     const [submitting, setSubmitting] = useState<boolean>(false);
+    const [slow, setSlow] = useState<boolean>(false);
+    const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (submitting) {
+            slowTimer.current = setTimeout(() => setSlow(true), 5000);
+        } else {
+            if (slowTimer.current) clearTimeout(slowTimer.current);
+            setSlow(false);
+        }
+        return () => {
+            if (slowTimer.current) clearTimeout(slowTimer.current);
+        };
+    }, [submitting]);
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
         e.preventDefault();
@@ -30,9 +44,18 @@ export default function LoginPage() {
             router.push("/dashboard");
         } catch (err) {
             const axiosError = err as AxiosError<ApiError>;
-            toast.error(
-                axiosError.response?.data?.error || "Sign in failed. Please try again."
-            );
+            if (axiosError.response) {
+                // The server responded with a real error (e.g. wrong
+                // password) — show that message as-is.
+                toast.error(axiosError.response.data?.error || "Sign in failed. Please try again.");
+            } else {
+                // No response at all: network error, timeout, or the
+                // backend still waking up from being idle (Render free
+                // tier). Say so explicitly instead of a generic failure.
+                toast.error(
+                    "Couldn't reach the server. It may be waking up from being idle — please wait a few seconds and try again."
+                );
+            }
         } finally {
             setSubmitting(false);
         }
@@ -93,12 +116,19 @@ export default function LoginPage() {
                     {submitting ? (
                         <span className="flex items-center justify-center gap-2">
                             <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                            Signing in...
+                            {slow ? "Waking up the server..." : "Signing in..."}
                         </span>
                     ) : (
                         "Sign In"
                     )}
                 </button>
+
+                {slow && (
+                    <p className="text-center text-xs text-gray-400">
+                        The server can take up to a minute to wake up after being idle.
+                        Please don&apos;t close this page or submit again.
+                    </p>
+                )}
             </form>
 
             <p className="text-center text-sm text-gray-500 mt-4">
