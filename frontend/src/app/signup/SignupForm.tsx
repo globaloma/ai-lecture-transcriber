@@ -7,6 +7,10 @@ import { useAuth } from "@/lib/auth";
 import { AxiosError } from "axios";
 import type { ApiError, RegisterPayload } from "@/types";
 import toast from "react-hot-toast";
+import PasswordInput from "@/components/PasswordInput";
+
+const INPUT_CLASS =
+    "w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400";
 
 const EMPTY_FORM: RegisterPayload = {
     full_name: "",
@@ -61,9 +65,15 @@ export default function SignupForm() {
             return;
         }
 
+        // The email is normalised server-side, but the password is stored
+        // verbatim. Trim it here so a stray leading/trailing space (common from
+        // mobile keyboards and password managers) doesn't get baked into the
+        // hash and lock the user out at login.
+        const payload: RegisterPayload = { ...form, password: form.password.trim() };
+
         try {
             setSubmitting(true);
-            await register(form);
+            await register(payload);
             toast.success("Account created!");
             router.push("/dashboard");
         } catch (err) {
@@ -73,7 +83,7 @@ export default function SignupForm() {
             // error, check whether the account exists by trying to log in
             // with the same credentials.
             try {
-                await login(form.email, form.password);
+                await login(payload.email.trim(), payload.password);
                 toast.success("Account created!");
                 router.push("/dashboard");
                 return;
@@ -111,14 +121,24 @@ export default function SignupForm() {
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">
                             {field.label}
                         </label>
-                        <input
-                            type={field.type || "text"}
-                            value={form[field.name]}
-                            onChange={(e) => handleChange(field.name, e.target.value)}
-                            placeholder={field.placeholder}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
-                            disabled={submitting}
-                        />
+                        {field.type === "password" ? (
+                            <PasswordInput
+                                value={form[field.name]}
+                                onChange={(e) => handleChange(field.name, e.target.value)}
+                                placeholder={field.placeholder}
+                                className={INPUT_CLASS}
+                                disabled={submitting}
+                            />
+                        ) : (
+                            <input
+                                type={field.type || "text"}
+                                value={form[field.name]}
+                                onChange={(e) => handleChange(field.name, e.target.value)}
+                                placeholder={field.placeholder}
+                                className={INPUT_CLASS}
+                                disabled={submitting}
+                            />
+                        )}
                     </div>
                 ))}
 

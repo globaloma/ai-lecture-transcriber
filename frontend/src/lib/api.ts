@@ -286,6 +286,19 @@ export async function loginRequest(
   return response.data;
 }
 
+export async function resetPasswordRequest(
+  email: string,
+  matricNumber: string,
+  newPassword: string
+): Promise<AuthResponse> {
+  const response = await api.post<AuthResponse>("/api/auth/reset-password", {
+    email,
+    matric_number: matricNumber,
+    new_password: newPassword,
+  });
+  return response.data;
+}
+
 export async function getCurrentUser(): Promise<{ user: User }> {
   const response = await api.get<{ user: User }>("/api/auth/me");
   return response.data;
