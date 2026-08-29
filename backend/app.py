@@ -239,6 +239,7 @@ def home():
             "get_attempts": "GET /api/assessments/<id>/attempts",
             "register": "POST /api/auth/register",
             "login": "POST /api/auth/login",
+            "reset_password": "POST /api/auth/reset-password",
             "me": "GET /api/auth/me",
             "health": "GET /api/health"
         }
@@ -271,7 +272,7 @@ def register():
     user = User(
         full_name=data["full_name"].strip(),
         email=email,
-        password_hash=hash_password(data["password"]),
+        password_hash=hash_password(data["password"].strip()),
         university=data["university"].strip(),
         faculty=data["faculty"].strip(),
         department=data["department"].strip(),
@@ -291,7 +292,7 @@ def register():
 def login():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
+    password = (data.get("password") or "").strip()
 
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
@@ -299,6 +300,40 @@ def login():
     user = User.query.filter_by(email=email).first()
     if not user or not verify_password(password, user.password_hash):
         return jsonify({"error": "Invalid email or password"}), 401
+
+    token = generate_token(user.id)
+    return jsonify({"token": token, "user": user.to_dict()}), 200
+
+
+# =====================
+# AUTH: RESET PASSWORD
+# =====================
+# No email service is configured, so identity is verified with the pair of
+# fields least likely to be guessed together: the account email and the matric
+# number captured at signup. On success the user is logged straight in.
+@app.route("/api/auth/reset-password", methods=["POST"])
+def reset_password():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    matric_number = (data.get("matric_number") or "").strip()
+    new_password = (data.get("new_password") or "").strip()
+
+    if not email or not matric_number or not new_password:
+        return jsonify({
+            "error": "Email, matric number and a new password are all required"
+        }), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user or user.matric_number.strip().lower() != matric_number.lower():
+        return jsonify({
+            "error": "That email and matric number don't match an account"
+        }), 400
+
+    user.password_hash = hash_password(new_password)
+    db.session.commit()
 
     token = generate_token(user.id)
     return jsonify({"token": token, "user": user.to_dict()}), 200

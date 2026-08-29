@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   loginRequest,
   registerRequest,
+  resetPasswordRequest,
   getToken,
   getStoredUser,
   setStoredAuth,
@@ -18,6 +19,11 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
+  resetPassword: (
+    email: string,
+    matricNumber: string,
+    newPassword: string
+  ) => Promise<void>;
   logout: () => void;
 }
 
@@ -57,6 +63,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ token: data.token, user: data.user, loading: false });
   }, []);
 
+  const resetPassword = useCallback(
+    async (email: string, matricNumber: string, newPassword: string) => {
+      const data = await resetPasswordRequest(email, matricNumber, newPassword);
+      setStoredAuth(data.token, data.user);
+      setState({ token: data.token, user: data.user, loading: false });
+    },
+    []
+  );
+
   const logout = useCallback(() => {
     clearStoredAuth();
     setState({ token: null, user: null, loading: false });
@@ -64,7 +79,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user: state.user, token: state.token, loading: state.loading, login, register, logout }}
+      value={{
+        user: state.user,
+        token: state.token,
+        loading: state.loading,
+        login,
+        register,
+        resetPassword,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
