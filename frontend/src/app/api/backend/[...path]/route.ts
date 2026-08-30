@@ -7,12 +7,23 @@ export const dynamic = "force-dynamic";
 // the backend responds, even though the backend request completes anyway.
 export const maxDuration = 60;
 
-const BACKEND_URL = process.env.BACKEND_URL!;
+const BACKEND_URL = process.env.BACKEND_URL;
 
 async function proxy(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  // Fail with a message instead of an opaque empty 500 — every request
+  // through this proxy silently crashed here whenever BACKEND_URL wasn't
+  // set in Vercel's own env vars (a local .env value never reaches Vercel).
+  if (!BACKEND_URL) {
+    console.error("BACKEND_URL is not set in the deployment environment");
+    return new Response(
+      JSON.stringify({ error: "Backend proxy misconfigured: BACKEND_URL is not set" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const { path } = await params;
 
   const url = new URL(`${BACKEND_URL}/${path.join("/")}`);
@@ -34,7 +45,16 @@ async function proxy(
     init.duplex = "half";
   }
 
-  const res = await fetch(url, init);
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    console.error("Proxy fetch to backend failed:", err);
+    return new Response(
+      JSON.stringify({ error: "Could not reach backend", details: String(err) }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   const responseHeaders = new Headers(res.headers);
   responseHeaders.delete("content-encoding");
