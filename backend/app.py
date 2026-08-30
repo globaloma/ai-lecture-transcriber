@@ -215,6 +215,20 @@ with app.app_context():
     db.create_all()
     print("Database tables ready")
 
+    # Any lecture still "processing" at boot was orphaned by a crash or
+    # restart — the background thread transcribing it cannot survive a
+    # process restart, so that row would otherwise stay stuck forever.
+    orphaned = Lecture.query.filter_by(status="processing").all()
+    if orphaned:
+        for lecture in orphaned:
+            lecture.status = "failed"
+            lecture.error_message = (
+                "Transcription was interrupted by a server restart. "
+                "Please re-upload this lecture."
+            )
+        db.session.commit()
+        print(f"Marked {len(orphaned)} orphaned lecture(s) as failed")
+
 
 # =====================
 # HOME
