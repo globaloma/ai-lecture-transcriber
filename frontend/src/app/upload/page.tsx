@@ -14,6 +14,7 @@ export default function UploadPage() {
     const [file, setFile] = useState<File | null>(null);
     const [title, setTitle] = useState<string>("");
     const [uploading, setUploading] = useState<boolean>(false);
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
     const [isDragging, setIsDragging] = useState<boolean>(false);
 
     async function handleSubmit(
@@ -28,8 +29,13 @@ export default function UploadPage() {
 
         try {
             setUploading(true);
+            setUploadProgress(0);
 
-            const result = await uploadLecture(file, title || undefined);
+            const result = await uploadLecture(
+                file,
+                title || undefined,
+                setUploadProgress
+            );
 
             // Redirect immediately to lecture page
             // The lecture page will show processing state
@@ -43,6 +49,7 @@ export default function UploadPage() {
                     "Upload failed. Please try again."
             );
             setUploading(false);
+            setUploadProgress(0);
         }
     }
 
@@ -175,6 +182,21 @@ export default function UploadPage() {
                     </div>
                 </div>
 
+                {/* Upload progress */}
+                {uploading && (
+                    <div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 mb-1.5 overflow-hidden">
+                            <div
+                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                        </div>
+                        <p className="text-xs text-gray-400 text-right">
+                            {uploadProgress}%
+                        </p>
+                    </div>
+                )}
+
                 {/* Submit */}
                 <button
                     type="submit"
@@ -188,7 +210,9 @@ export default function UploadPage() {
                     {uploading ? (
                         <span className="flex items-center justify-center gap-2">
                             <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                            Uploading...
+                            {uploadProgress < 100
+                                ? `Uploading... ${uploadProgress}%`
+                                : "Processing upload..."}
                         </span>
                     ) : (
                         "Upload & Transcribe"

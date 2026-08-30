@@ -127,6 +127,13 @@ import type {
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "/api/backend";
 
+// Uploads bypass the Vercel proxy route above and go straight to Render:
+// Vercel serverless functions cap request bodies at 4.5MB and cap execution
+// time, both of which a real lecture video blows past. The backend already
+// allows this origin via CORS.
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:5000";
+
 const TOKEN_KEY = "auth_token";
 const USER_KEY = "auth_user";
 
@@ -188,13 +195,24 @@ api.interceptors.response.use(
 
 export async function uploadLecture(
   file: File,
-  title?: string
+  title?: string,
+  onProgress?: (percent: number) => void
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
   if (title) formData.append("title", title);
 
-  const response = await api.post<UploadResponse>("/api/upload", formData);
+  const response = await axios.post<UploadResponse>(
+    `${BACKEND_URL}/api/upload`,
+    formData,
+    {
+      headers: { Authorization: `Bearer ${getToken()}` },
+      onUploadProgress: (event) => {
+        if (!onProgress || !event.total) return;
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      },
+    }
+  );
   return response.data;
 }
 
