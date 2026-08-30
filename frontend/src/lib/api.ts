@@ -328,8 +328,13 @@ export async function getCurrentUser(): Promise<{ user: User }> {
 export async function generateAssessment(
   lectureId: number
 ): Promise<Assessment> {
-  const response = await api.post<Assessment>(
-    `/api/lectures/${lectureId}/assessment`
+  // Bypasses the Vercel proxy (same reason as uploadLecture): generating 10
+  // MCQs from a full transcript via Gemini can take longer than Vercel's
+  // serverless function timeout, which was killing the connection outright.
+  const response = await axios.post<Assessment>(
+    `${BACKEND_URL}/api/lectures/${lectureId}/assessment`,
+    null,
+    { headers: { Authorization: `Bearer ${getToken()}` } }
   );
   return response.data;
 }
