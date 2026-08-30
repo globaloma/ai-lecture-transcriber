@@ -36,6 +36,12 @@ def generate_mcqs(transcript_text: str, n: int = 10) -> list:
     the Gemini API (free tier). Returns a list of dicts:
     [{"question": str, "choices": [str, ...], "correct_index": int, "explanation": str}, ...]
     """
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY environment variable is not set. Assessment "
+            "generation cannot call the Gemini API without it."
+        )
+
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = (
