@@ -24,6 +24,7 @@ import type {
   SearchResult,
   Assessment,
   SubmitAttemptResponse,
+  ApiError,
 } from "@/types";
 import { AxiosError } from "axios";
 import toast from "react-hot-toast";
@@ -398,7 +399,12 @@ async function handleGenerateTopics(): Promise<void> {
       toast.success(`${data.total_questions} questions generated!`);
       setActiveTab("assessment");
     } catch (err) {
-      toast.error("Failed to generate assessment");
+      const axiosError = err as AxiosError<ApiError>;
+      toast.error(
+        axiosError.response?.data?.details ||
+          axiosError.response?.data?.error ||
+          "Failed to generate assessment"
+      );
       console.error(err);
     } finally {
       setGeneratingAssessment(false);
