@@ -1,7 +1,9 @@
 from faster_whisper import WhisperModel
 
-# int8 on CPU keeps memory low enough for small hosting tiers (e.g. Render free)
-model = WhisperModel("base", device="cpu", compute_type="int8")
+# int8 on CPU keeps memory low enough for small hosting tiers (e.g. Render free).
+# "base" was still getting OOM-killed on Render's 512MB free instance even with
+# greedy decoding — "tiny" is roughly half the memory footprint.
+model = WhisperModel("tiny", device="cpu", compute_type="int8")
 
 
 def transcribe_file(file_path):
