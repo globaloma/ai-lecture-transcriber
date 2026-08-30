@@ -10,14 +10,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake the model weights into the image so cold starts on ephemeral hosting
-# don't need to re-download from Hugging Face.
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+# (e.g. Render free tier) don't need to re-download from Hugging Face.
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
 
 COPY . .
 
-# 7860 is Hugging Face Spaces' expected container port (see app_port in
-# README.md); ${PORT} stays overridable for other hosts like Render.
-ENV PORT=7860
-EXPOSE 7860
+ENV PORT=10000
+EXPOSE 10000
 
 CMD ["sh", "-c", "gunicorn wsgi:app --bind 0.0.0.0:${PORT} --workers 1 --threads 4 --timeout 120"]
