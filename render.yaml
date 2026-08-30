@@ -17,3 +17,7 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      # JWT signing key for auth tokens. Without it every login / signup /
+      # password reset returns 500. Set the value in the Render dashboard.
+      - key: SECRET_KEY
+        sync: false
